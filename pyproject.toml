@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bijie-hydro-collector"
-version = "0.2.0"
+version = "0.3.0"
 description = "贵州省大型水库实时水情采集模块"
 requires-python = ">=3.11"
 dependencies = [

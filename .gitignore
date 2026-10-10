@@ -11,4 +11,5 @@ runtime/
 outputs/
 docs/_qa*/
 ~$*.docx
+*.bak
 

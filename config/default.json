@@ -1,54 +1,71 @@
 {
-  "source": {
-    "page_url": "http://xxfb.mwr.cn/sq_dxsk.html",
-    "endpoint_override": null,
-    "timeout_seconds": 15,
-    "max_attempts": 2,
-    "retry_base_seconds": 2.0,
-    "user_agent": "GuizhouHydroCollector/0.2 (authorized data collection)"
-  },
-  "paths": {
-    "template": "D:/生态/获取/格式.xlsx",
-    "output_root": "D:/生态/获取/成果",
-    "archive_root": "D:/生态/获取/归档",
-    "font_cache": "D:/生态/获取/归档/fonts"
-  },
-  "font_decoder": {
-    "reference_fonts": [
-      "C:/Windows/Fonts/msyh.ttc",
-      "C:/Windows/Fonts/simsun.ttc",
-      "C:/Windows/Fonts/simhei.ttf"
-    ],
-    "required_fields": ["bsnm", "addvnm", "rvnm", "stnm", "idNo", "rz", "rzRange"],
-    "fail_on_unresolved": true
-  },
-  "filter": {
-    "province_names": ["贵州", "贵州省"],
-    "match_mode": "province"
-  },
-  "quality": {
-    "min_national_records": 100,
-    "max_national_records": 2000,
-    "max_observation_age_hours": 72,
-    "max_future_minutes": 30,
-    "max_level_change_meters": 20,
-    "max_water_level_delta_meters": 20,
-    "require_at_least_one_target": true
-  },
-  "state": {
-    "file": "D:/生态/获取/归档/state/last_success_guizhou.json",
-    "skip_duplicate_snapshot": true
-  },
-  "output": {
-    "file_name": "贵州省大型水库实时水情_{report_date}_{batch_id}.xlsx",
-    "date_format": "yyyy-mm-dd hh:mm",
-    "number_format": "0.####",
-    "raw_sheet": "原始数据",
-    "log_sheet": "采集日志"
-  },
-  "upload": {
-    "enabled": false,
-    "provider": null
-  }
+    "source":  {
+                   "page_url":  "http://xxfb.mwr.cn/sq_dxsk.html",
+                   "endpoint_override":  null,
+                   "timeout_seconds":  15,
+                   "max_attempts":  2,
+                   "retry_base_seconds":  2.0,
+                   "user_agent":  "GuizhouHydroCollector/0.3 (authorized data collection)"
+               },
+    "paths":  {
+                  "template":  "D:/生态/获取/格式.xlsx",
+                  "output_root":  "D:/生态/获取/成果",
+                  "archive_root":  "D:/生态/获取/归档",
+                  "font_cache":  "D:/生态/获取/归档/fonts"
+              },
+    "font_decoder":  {
+                         "reference_fonts":  [
+                                                 "C:/Windows/Fonts/msyh.ttc",
+                                                 "C:/Windows/Fonts/simsun.ttc",
+                                                 "C:/Windows/Fonts/simhei.ttf"
+                                             ],
+                         "required_fields":  [
+                                                 "bsnm",
+                                                 "addvnm",
+                                                 "rvnm",
+                                                 "stnm",
+                                                 "idNo",
+                                                 "rz",
+                                                 "rzRange"
+                                             ],
+                         "fail_on_unresolved":  true
+                     },
+    "filter":  {
+                   "province_names":  [
+                                          "贵州",
+                                          "贵州省"
+                                      ],
+                   "match_mode":  "province"
+               },
+    "quality":  {
+                    "min_national_records":  100,
+                    "max_national_records":  2000,
+                    "max_observation_age_hours":  72,
+                    "max_future_minutes":  30,
+                    "max_level_change_meters":  20,
+                    "max_water_level_delta_meters":  20,
+                    "require_at_least_one_target":  true
+                },
+    "state":  {
+                  "file":  "D:/生态/获取/归档/state/last_success_guizhou.json",
+                  "skip_duplicate_snapshot":  true
+              },
+    "output":  {
+                   "file_name":  "贵州省大型水库实时水情_{report_date}_{batch_id}.xlsx",
+                   "date_format":  "yyyy-mm-dd hh:mm",
+                   "number_format":  "0.####",
+                   "raw_sheet":  "原始数据",
+                   "log_sheet":  "采集日志"
+               },
+    "schedule":  {
+                     "task_name":  "贵州省大型水库实时水情采集",
+                     "popup_enabled":  true,
+                     "popup_timeout_seconds":  15,
+                     "daily_time":  "09:00",
+                     "daily_count":  1
+                 },
+    "upload":  {
+                   "enabled":  false,
+                   "provider":  null
+               }
 }
-

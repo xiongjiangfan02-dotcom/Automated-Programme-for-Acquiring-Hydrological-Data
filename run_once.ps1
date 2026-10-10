@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$Config = "config/default.json",
     [string]$Python = ""
 )
@@ -11,6 +11,7 @@ if (-not $Python) {
 }
 $env:PYTHONPATH = Join-Path $projectRoot "src"
 $env:PYTHONUTF8 = "1"
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 $configPath = if ([System.IO.Path]::IsPathRooted($Config)) { $Config } else { Join-Path $projectRoot $Config }
 & $Python -m bijie_hydro.cli --config $configPath collect
 exit $LASTEXITCODE

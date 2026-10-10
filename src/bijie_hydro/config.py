@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -63,6 +64,26 @@ def load_settings(path: str | Path) -> Settings:
         raise ConfigurationError("筛选模式必须为province")
     if any(key in filter_config for key in ("allowlist_file", "require_allowlist_match", "city_names")):
         raise ConfigurationError("贵州省级采集不得配置城市或水库白名单")
+    schedule = data.get("schedule", {})
+    if not isinstance(schedule, dict):
+        raise ConfigurationError("schedule配置必须是对象")
+    daily_time = str(schedule.get("daily_time", "09:00"))
+    if not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", daily_time):
+        raise ConfigurationError("schedule.daily_time必须使用24小时制HH:mm")
+    daily_count = schedule.get("daily_count", 1)
+    if type(daily_count) is not int or not 1 <= daily_count <= 24:
+        raise ConfigurationError("schedule.daily_count必须为1..24之间的整数")
+    task_name = str(schedule.get("task_name", "贵州省大型水库实时水情采集"))
+    if not task_name.strip() or any(character in task_name for character in "\\/*?[]"):
+        raise ConfigurationError("schedule.task_name不能为空或包含路径分隔符、通配符")
+    if not isinstance(schedule.get("popup_enabled", True), bool):
+        raise ConfigurationError("schedule.popup_enabled必须为布尔值")
+    try:
+        popup_timeout = int(schedule.get("popup_timeout_seconds", 15))
+    except (TypeError, ValueError) as exc:
+        raise ConfigurationError("schedule.popup_timeout_seconds必须为整数") from exc
+    if not 1 <= popup_timeout <= 120:
+        raise ConfigurationError("schedule.popup_timeout_seconds必须在1..120秒之间")
     from .filtering import normalize_province_names
     normalize_province_names(filter_config.get("province_names", []))
     return settings

@@ -8,6 +8,8 @@ from decimal import Decimal
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from bijie_hydro.config import load_settings
+from bijie_hydro.errors import ConfigurationError
 from bijie_hydro.excel_writer import EXPECTED_HEADERS, validate_template, write_workbook
 from bijie_hydro.filtering import matches_province, normalize_province_names
 from bijie_hydro.http_client import discover_endpoint, parse_api_payload
@@ -54,6 +56,67 @@ class ProvinceFilterTests(unittest.TestCase):
         self.assertFalse(matches_province("云南省", province))
         self.assertFalse(matches_province("云南省贵州村", province))
         self.assertFalse(matches_province("", province))
+
+
+class ScheduleConfigTests(unittest.TestCase):
+    def test_default_schedule_is_daily_at_nine(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            config = json.loads((Path(__file__).resolve().parents[1] / "config/default.json").read_text(encoding="utf-8"))
+            config_path = root / "config.json"
+            config_path.write_text(json.dumps(config, ensure_ascii=False), encoding="utf-8")
+            settings = load_settings(config_path)
+            self.assertEqual(settings.data["schedule"]["daily_time"], "09:00")
+            self.assertEqual(settings.data["schedule"]["daily_count"], 1)
+
+    def test_daily_count_limits_and_backward_compatibility(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            config = json.loads((Path(__file__).resolve().parents[1] / "config/default.json").read_text(encoding="utf-8"))
+            config_path = root / "config.json"
+            for count in (1, 2, 24):
+                config["schedule"]["daily_count"] = count
+                config_path.write_text(json.dumps(config), encoding="utf-8")
+                self.assertEqual(load_settings(config_path).data["schedule"]["daily_count"], count)
+            for count in (0, 25, True, False, 1.5, "2", None):
+                with self.subTest(count=count):
+                    config["schedule"]["daily_count"] = count
+                    config_path.write_text(json.dumps(config), encoding="utf-8")
+                    with self.assertRaises(ConfigurationError):
+                        load_settings(config_path)
+            del config["schedule"]["daily_count"]
+            config_path.write_text(json.dumps(config), encoding="utf-8")
+            load_settings(config_path)
+
+    def test_invalid_schedule_time_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            config = json.loads((Path(__file__).resolve().parents[1] / "config/default.json").read_text(encoding="utf-8"))
+            config["schedule"]["daily_time"] = "9:00"
+            config_path = root / "config.json"
+            config_path.write_text(json.dumps(config, ensure_ascii=False), encoding="utf-8")
+            with self.assertRaises(ConfigurationError):
+                load_settings(config_path)
+
+    def test_unsafe_task_name_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            config = json.loads((Path(__file__).resolve().parents[1] / "config/default.json").read_text(encoding="utf-8"))
+            config["schedule"]["task_name"] = "bad/name"
+            config_path = root / "config.json"
+            config_path.write_text(json.dumps(config, ensure_ascii=False), encoding="utf-8")
+            with self.assertRaises(ConfigurationError):
+                load_settings(config_path)
+
+    def test_invalid_popup_settings_are_rejected(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            config = json.loads((Path(__file__).resolve().parents[1] / "config/default.json").read_text(encoding="utf-8"))
+            config["schedule"]["popup_timeout_seconds"] = 0
+            config_path = root / "config.json"
+            config_path.write_text(json.dumps(config, ensure_ascii=False), encoding="utf-8")
+            with self.assertRaises(ConfigurationError):
+                load_settings(config_path)
 
 
 class ExcelTests(unittest.TestCase):
