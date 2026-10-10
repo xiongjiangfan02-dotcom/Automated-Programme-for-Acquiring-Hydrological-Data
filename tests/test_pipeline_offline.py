@@ -40,6 +40,26 @@ class OfflinePipelineTests(unittest.TestCase):
                                 "rz": "1131.2500",
                                 "rzRange": 0,
                                 "idNo": "id-1",
+                            },
+                            {
+                                "bsnm": "长江",
+                                "addvnm": "贵州省",
+                                "rvnm": "乌江",
+                                "stnm": "未登记贵州水库",
+                                "tm": datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d %H:%M:%S"),
+                                "rz": "1030.5",
+                                "rzRange": "0.25",
+                                "idNo": "id-2",
+                            },
+                            {
+                                "bsnm": "长江",
+                                "addvnm": "云南省",
+                                "rvnm": "其他河流",
+                                "stnm": "同名水库",
+                                "tm": datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d %H:%M:%S"),
+                                "rz": "900",
+                                "rzRange": "0.1",
+                                "idNo": "id-3",
                             }
                         ],
                     },
@@ -71,10 +91,8 @@ class OfflinePipelineTests(unittest.TestCase):
                             "fail_on_unresolved": True,
                         },
                         "filter": {
-                            "province_names": ["贵州省"],
-                            "city_names": ["毕节市"],
-                            "allowlist_file": str(root / "allowlist.json"),
-                            "require_allowlist_match": True,
+                            "province_names": ["贵州", "贵州省"],
+                            "match_mode": "province",
                         },
                         "quality": {
                             "min_national_records": 1,
@@ -99,34 +117,17 @@ class OfflinePipelineTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            (root / "allowlist.json").write_text(
-                json.dumps(
-                    {
-                        "version": "test",
-                        "reservoirs": [
-                            {
-                                "canonical_name": "夹岩水库",
-                                "aliases": ["夹岩"],
-                                "id_nos": ["id-1"],
-                                "province": "贵州省",
-                                "city": "毕节市",
-                                "evidence_status": "已核实",
-                                "source_url": "https://official.example/roster",
-                            }
-                        ],
-                    },
-                    ensure_ascii=False,
-                ),
-                encoding="utf-8",
-            )
             log = CollectionPipeline(load_settings(config)).run(response)
             self.assertEqual(log.status, "成功")
             outputs = list((root / "outputs").rglob("*.xlsx"))
             self.assertEqual(len(outputs), 1)
             workbook = load_workbook(outputs[0], data_only=False)
             self.assertEqual(workbook.sheetnames, ["Sheet1", "原始数据", "采集日志"])
-            self.assertEqual(workbook["Sheet1"].cell(2, 4).value, "夹岩水库")
-            self.assertIsNone(workbook["Sheet1"].cell(2, 7).value)
+            self.assertEqual(workbook["Sheet1"].max_row, 3)
+            self.assertEqual(workbook["Sheet1"].cell(2, 4).value, "未登记贵州水库")
+            self.assertEqual(workbook["Sheet1"].cell(3, 4).value, "夹岩")
+            self.assertEqual(workbook["Sheet1"].cell(2, 7).value, 0.25)
+            self.assertIsNone(workbook["Sheet1"].cell(3, 7).value)
             workbook.close()
             second = CollectionPipeline(load_settings(config)).run(response)
             self.assertEqual(second.status, "重复跳过")

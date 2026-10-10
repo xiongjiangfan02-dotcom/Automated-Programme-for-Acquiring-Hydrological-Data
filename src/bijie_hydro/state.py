@@ -12,6 +12,10 @@ from .models import ReservoirRecord
 from .errors import QualityError
 
 
+def record_key(record: ReservoirRecord) -> str:
+    return record.id_no or f"{record.administrative_area}|{record.reservoir_name}"
+
+
 def canonical_measurement(value):
     if value is None:
         return None
@@ -22,7 +26,7 @@ def canonical_measurement(value):
 def snapshot_fingerprint(records: list[ReservoirRecord]) -> str:
     normalized = [
         {
-            "key": record.id_no or record.reservoir_name,
+            "key": record_key(record),
             "name": record.reservoir_name,
             "basin": record.basin,
             "administrative_area": record.administrative_area,
@@ -31,7 +35,7 @@ def snapshot_fingerprint(records: list[ReservoirRecord]) -> str:
             "water_level": canonical_measurement(record.water_level),
             "daily_change": canonical_measurement(record.daily_change),
         }
-        for record in sorted(records, key=lambda item: (item.id_no or item.reservoir_name, item.observation_time))
+        for record in sorted(records, key=lambda item: (record_key(item), item.observation_time))
     ]
     value = json.dumps(normalized, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
@@ -71,7 +75,7 @@ class StateStore:
             "batch_id": batch_id,
             "fingerprint": fingerprint,
             "records": {
-                (record.id_no or record.reservoir_name): {
+                record_key(record): {
                     "reservoir_name": record.reservoir_name,
                     "observation_time": record.observation_time.isoformat(),
                     "water_level": str(record.water_level) if record.water_level is not None else None,

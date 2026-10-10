@@ -5,7 +5,7 @@
     "timeout_seconds": 15,
     "max_attempts": 2,
     "retry_base_seconds": 2.0,
-    "user_agent": "BijieHydroCollector/0.1 (authorized data collection)"
+    "user_agent": "GuizhouHydroCollector/0.2 (authorized data collection)"
   },
   "paths": {
     "template": "D:/生态/获取/格式.xlsx",
@@ -24,9 +24,7 @@
   },
   "filter": {
     "province_names": ["贵州", "贵州省"],
-    "city_names": ["毕节", "毕节市"],
-    "allowlist_file": "config/reservoir_allowlist.json",
-    "require_allowlist_match": true
+    "match_mode": "province"
   },
   "quality": {
     "min_national_records": 100,
@@ -38,11 +36,11 @@
     "require_at_least_one_target": true
   },
   "state": {
-    "file": "D:/生态/获取/归档/state/last_success.json",
+    "file": "D:/生态/获取/归档/state/last_success_guizhou.json",
     "skip_duplicate_snapshot": true
   },
   "output": {
-    "file_name": "毕节市大型水库实时水情_{report_date}_{batch_id}.xlsx",
+    "file_name": "贵州省大型水库实时水情_{report_date}_{batch_id}.xlsx",
     "date_format": "yyyy-mm-dd hh:mm",
     "number_format": "0.####",
     "raw_sheet": "原始数据",

@@ -58,5 +58,12 @@ def load_settings(path: str | Path) -> Settings:
     required = {"bsnm", "addvnm", "rvnm", "stnm", "idNo", "rz", "rzRange"}
     if not required.issubset(settings.section("font_decoder").get("required_fields", [])):
         raise ConfigurationError("动态字体配置缺少必要解码字段")
+    filter_config = settings.section("filter")
+    if filter_config.get("match_mode") != "province":
+        raise ConfigurationError("筛选模式必须为province")
+    if any(key in filter_config for key in ("allowlist_file", "require_allowlist_match", "city_names")):
+        raise ConfigurationError("贵州省级采集不得配置城市或水库白名单")
+    from .filtering import normalize_province_names
+    normalize_province_names(filter_config.get("province_names", []))
     return settings
 

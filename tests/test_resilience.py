@@ -20,7 +20,6 @@ from openpyxl import Workbook, load_workbook
 from bijie_hydro.config import load_settings
 from bijie_hydro.errors import ConfigurationError, DecodeError, QualityError, SourceError, TemplateError
 from bijie_hydro.excel_writer import EXPECTED_HEADERS, validate_template, write_workbook
-from bijie_hydro.filtering import ReservoirAllowlist
 from bijie_hydro.font_decoder import DynamicFontDecoder
 from bijie_hydro.http_client import HttpClient, discover_endpoint, validate_source_url
 from bijie_hydro.locking import collection_lock
@@ -47,13 +46,8 @@ def fixture(root):
                        "archive_root": str(root / "archive"), "font_cache": str(root / "fonts")}
     config["source"].update(page_url="http://offline.invalid/sq_dxsk.html", timeout_seconds=1, max_attempts=1)
     config["state"]["file"] = str(root / "state.json")
-    config["filter"]["allowlist_file"] = str(root / "allowlist.json")
     config["quality"]["min_national_records"] = 1
     config["font_decoder"]["reference_fonts"] = []
-    allowlist = {"version": "test", "reservoirs": [{"canonical_name": "夹岩水库", "aliases": ["夹岩"],
-        "id_nos": ["id-1"], "province": "贵州省", "city": "毕节市", "evidence_status": "已核实",
-        "source_url": "https://official.example/roster"}]}
-    (root / "allowlist.json").write_text(json.dumps(allowlist, ensure_ascii=False), encoding="utf-8")
     config_path = root / "config.json"
     config_path.write_text(json.dumps(config, ensure_ascii=False), encoding="utf-8")
     record = {"bsnm": "长江", "addvnm": "贵州省", "rvnm": "六冲河", "stnm": "夹岩",
@@ -253,16 +247,15 @@ class SafetyTests(unittest.TestCase):
             with self.assertRaises(QualityError):
                 StateStore(path).load()
 
-    def test_unverified_allowlist_fails_closed(self):
+    def test_obsolete_allowlist_configuration_is_rejected(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            fixture(root)
-            path = root / "allowlist.json"
-            data = json.loads(path.read_text(encoding="utf-8"))
-            data["reservoirs"][0]["evidence_status"] = "待核实"
-            path.write_text(json.dumps(data), encoding="utf-8")
+            config_path, _ = fixture(root)
+            data = json.loads(config_path.read_text(encoding="utf-8"))
+            data["filter"]["allowlist_file"] = "obsolete.json"
+            config_path.write_text(json.dumps(data), encoding="utf-8")
             with self.assertRaises(ConfigurationError):
-                ReservoirAllowlist.load(path)
+                load_settings(config_path)
 
     def test_output_is_atomic_template_preserved_and_text_is_not_formula(self):
         with tempfile.TemporaryDirectory() as temp:

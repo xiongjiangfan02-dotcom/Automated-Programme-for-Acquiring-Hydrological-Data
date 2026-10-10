@@ -16,14 +16,14 @@ from .archive import ArchiveStore
 from .config import Settings
 from .errors import CollectorError, DecodeError, QualityError
 from .excel_writer import validate_template, write_workbook
-from .filtering import ReservoirAllowlist
+from .filtering import matches_province, normalize_province_names
 from .font_decoder import DynamicFontDecoder
 from .http_client import HttpClient, discover_endpoint, parse_api_payload, validate_source_url
 from .locking import collection_lock
 from .models import BatchLog, CheckResult, RawRecord, ReservoirRecord
 from .normalize import clean_text, parse_measurement, parse_observation_time
 from .quality import check_historical_delta, check_historical_time, check_source_structure, check_target_records, has_blocking_failure
-from .state import StateStore, snapshot_fingerprint
+from .state import StateStore, record_key, snapshot_fingerprint
 
 
 CHINA_TZ = ZoneInfo("Asia/Shanghai")
@@ -48,7 +48,7 @@ class CollectionPipeline:
             timeout=int(source.get("timeout_seconds", 30)),
             max_attempts=int(source.get("max_attempts", 3)),
             retry_base_seconds=float(source.get("retry_base_seconds", 2.0)),
-            user_agent=str(source.get("user_agent", "BijieHydroCollector/0.1")),
+            user_agent=str(source.get("user_agent", "GuizhouHydroCollector/0.2")),
         )
 
     def run(self, input_json: Path | None = None) -> BatchLog:
@@ -81,14 +81,17 @@ class CollectionPipeline:
             template = self.settings.resolve_path(paths["template"])
             template_info = validate_template(template)
             archive.save_json("template_validation.json", template_info)
-            allowlist = ReservoirAllowlist.load(self.settings.resolve_path(filter_config["allowlist_file"]))
-            archive.save_bytes("reservoir_allowlist.json", self.settings.resolve_path(filter_config["allowlist_file"]).read_bytes())
+            province_names = normalize_province_names(filter_config.get("province_names", []))
+            archive.save_json("region_filter.json", {
+                "mode": "province",
+                "province_names": sorted(province_names),
+            })
             archive.save_json("provenance.json", {
                 "batch_id": batch_id, "mode": "offline_replay" if input_json else "online",
                 "input_json": str(input_json) if input_json else None,
                 "collected_at": started_at.isoformat(), "timezone": "Asia/Shanghai",
                 "template_sha256": hashlib.sha256(template.read_bytes()).hexdigest(),
-                "allowlist_version": allowlist.version, "processor_version": __version__,
+                "filter_mode": "province", "province_names": sorted(province_names), "processor_version": __version__,
                 "short_time_year_policy": "优先官网完整年份；仅无年份时以采集年份推定，跨年回退并受时效检查约束",
             })
 
@@ -145,16 +148,13 @@ class CollectionPipeline:
                 raw.decoded["tm"] = values.get("tm")
                 raw_records.append(raw)
             decode_error_count = sum(bool(item.decode_errors) for item in raw_records)
-            target_region_names = {clean_text(value) for value in filter_config.get("province_names", []) if clean_text(value)}
             critical_decode_errors = []
             for item in raw_records:
                 if not item.decode_errors:
                     continue
                 area = clean_text(item.decoded.get("addvnm"))
-                station = clean_text(item.decoded.get("stnm"))
-                station_id = clean_text(item.decoded.get("idNo"))
                 area_failed = any(error.startswith("addvnm:") for error in item.decode_errors)
-                if area_failed or area in target_region_names or station in allowlist.by_name or station_id in allowlist.by_id:
+                if area_failed or matches_province(area, province_names):
                     critical_decode_errors.append(item.index)
             for font_id, body in decoder.used_fonts.items():
                 archive.save_bytes(f"font_{font_id}.ttf", body)
@@ -173,21 +173,19 @@ class CollectionPipeline:
             if critical_decode_errors and font_config.get("fail_on_unresolved", True):
                 raise DecodeError(f"目标相关动态字体解码失败，记录序号={critical_decode_errors[:20]}")
 
-            province_names = set(filter_config.get("province_names", []))
-            city_names = set(filter_config.get("city_names", []))
             target_records: list[ReservoirRecord] = []
             for raw in raw_records:
-                entry = allowlist.match(raw.decoded, province_names, city_names)
-                if entry is None:
-                    raw.filter_status = "不在毕节大型水库白名单"
+                if not matches_province(raw.decoded.get("addvnm"), province_names):
+                    raw.filter_status = "非贵州省记录"
                     continue
-                raw.filter_status = f"命中白名单:{entry.canonical_name}"
+                reservoir_name = clean_text(raw.decoded.get("stnm"))
+                raw.filter_status = "贵州省记录"
                 observation_time = parse_observation_time(raw.decoded.get("tm"), started_at)
                 water_level, water_missing = parse_measurement(raw.decoded.get("rz"))
                 daily_change, change_missing = parse_measurement(raw.decoded.get("rzRange"))
                 for field, reason in (("库水位", water_missing), ("日变幅", change_missing)):
                     if reason and reason.startswith(("非数值", "非有限")):
-                        log.checks.append(CheckResult("数值有效性", "异常", f"{entry.canonical_name}/{field}:{reason}", True))
+                        log.checks.append(CheckResult("数值有效性", "异常", f"{reservoir_name or '未命名水库'}/{field}:{reason}", True))
                 if water_missing:
                     raw.missing_reasons.append(f"库水位:{water_missing}")
                 if change_missing:
@@ -198,7 +196,7 @@ class CollectionPipeline:
                         basin=clean_text(raw.decoded.get("bsnm")),
                         administrative_area=administrative_area,
                         river_name=clean_text(raw.decoded.get("rvnm")),
-                        reservoir_name=entry.canonical_name,
+                        reservoir_name=reservoir_name,
                         observation_time=observation_time,
                         water_level=water_level,
                         daily_change=daily_change,
@@ -211,8 +209,6 @@ class CollectionPipeline:
             target_records = self._deduplicate(target_records)
             log.checks.append(CheckResult("快照去重", "正常", f"候选={original_count}; 保留每库最新观测={len(target_records)}"))
             log.target_count = len(target_records)
-            missing_names = sorted({entry.canonical_name for entry in allowlist.entries} - {item.reservoir_name for item in target_records})
-            log.checks.append(CheckResult("名录候选覆盖", "警告" if missing_names else "正常", f"本页面未返回的属地候选={missing_names}；名录包含重点中型，不要求候选全部出现", False))
             archive.save_json("parsed_records.json", [asdict(item) for item in raw_records])
             archive.save_json("selected_records.json", [asdict(item) for item in target_records])
             log.checks.extend(
@@ -234,7 +230,7 @@ class CollectionPipeline:
             previous_state = state_store.load()
             log.checks.append(check_historical_time(target_records, previous_state))
             previous_keys = set(previous_state.get("records", {}))
-            current_keys = {item.id_no or item.reservoir_name for item in target_records}
+            current_keys = {record_key(item) for item in target_records}
             lost = previous_keys - current_keys
             log.checks.append(CheckResult("历史覆盖变化", "需复核" if lost else "正常", f"较上次缺少站点={sorted(lost)}", bool(lost)))
             log.checks.append(
@@ -302,17 +298,16 @@ class CollectionPipeline:
     def _deduplicate(records: list[ReservoirRecord]) -> list[ReservoirRecord]:
         chosen: dict[tuple[str, datetime], ReservoirRecord] = {}
         for record in records:
-            key = (record.id_no or record.reservoir_name, record.observation_time)
+            key = (record_key(record), record.observation_time)
             previous = chosen.get(key)
             if previous and any(getattr(previous, field) != getattr(record, field) for field in ("basin", "administrative_area", "river_name", "reservoir_name", "water_level", "daily_change")):
                 raise QualityError(f"同站同观测时间记录冲突: {record.reservoir_name}")
             chosen.setdefault(key, record)
         latest: dict[str, ReservoirRecord] = {}
         for record in chosen.values():
-            old = latest.get(record.reservoir_name)
-            if old and old.id_no != record.id_no:
-                raise QualityError(f"同库对应多个站号，需复核: {record.reservoir_name}")
+            key = record_key(record)
+            old = latest.get(key)
             if old is None or record.observation_time > old.observation_time:
-                latest[record.reservoir_name] = record
-        return sorted(latest.values(), key=lambda item: item.reservoir_name)
+                latest[key] = record
+        return sorted(latest.values(), key=lambda item: (item.administrative_area, item.reservoir_name, item.id_no))
 

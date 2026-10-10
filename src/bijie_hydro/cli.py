@@ -12,7 +12,7 @@ from .pipeline import CollectionPipeline
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="贵州毕节市大型水库实时水情采集模块")
+    parser = argparse.ArgumentParser(description="贵州省大型水库实时水情采集模块")
     parser.add_argument("--config", default="config/default.json", help="配置文件路径")
     subparsers = parser.add_subparsers(dest="command", required=True)
     validate_parser = subparsers.add_parser("validate-template", help="只读验证Excel模板")

@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 
 from .models import CheckResult, ReservoirRecord
+from .state import record_key
 
 
 REQUIRED_SOURCE_FIELDS = {"bsnm", "addvnm", "rvnm", "stnm", "tm", "rz", "rzRange", "idNo"}
@@ -54,7 +55,7 @@ def check_target_records(
         CheckResult(
             "目标记录数",
             "正常" if records or not require_one else "无数据",
-            f"毕节大型水库记录数={len(records)}",
+            f"贵州大型水库记录数={len(records)}",
             require_one and not records,
         )
     )
@@ -66,11 +67,14 @@ def check_target_records(
     checks.append(CheckResult("观测时间时效", "正常" if not too_old and not future else "异常", f"超时={too_old}; 未来时间={future}", bool(too_old or future)))
     extreme = [item.reservoir_name for item in records if item.daily_change is not None and abs(item.daily_change) > max_level_change]
     checks.append(CheckResult("日变幅范围", "正常" if not extreme else "需复核", f"超过阈值的水库={extreme}", bool(extreme)))
-    missing_text = [item.reservoir_name for item in records if not item.basin or not item.river_name or not item.administrative_area]
+    missing_identity = [item.source_index for item in records if not item.reservoir_name or not item.administrative_area]
+    checks.append(CheckResult("身份字段", "异常" if missing_identity else "正常",
+                              f"库名或行政区划缺失的原始序号={missing_identity}", bool(missing_identity)))
+    missing_text = [item.reservoir_name for item in records if not item.basin or not item.river_name]
     missing_level = [item.reservoir_name for item in records if item.water_level is None]
     missing_change = [item.reservoir_name for item in records if item.daily_change is None]
     checks.append(CheckResult("缺失字段", "警告" if missing_text or missing_level or missing_change else "正常",
-                              f"流域/河名/区划缺失={missing_text}; 水位缺测={missing_level}; 日变幅缺测={missing_change}", False))
+                              f"流域/河名缺失={missing_text}; 水位缺测={missing_level}; 日变幅缺测={missing_change}", False))
     return checks
 
 
@@ -78,7 +82,7 @@ def check_historical_delta(records: list[ReservoirRecord], previous: dict, maxim
     previous_records = previous.get("records", {}) if isinstance(previous, dict) else {}
     extreme: list[str] = []
     for record in records:
-        key = record.id_no or record.reservoir_name
+        key = record_key(record)
         old = previous_records.get(key)
         if not isinstance(old, dict) or record.water_level is None or old.get("water_level") in (None, ""):
             continue
@@ -99,7 +103,7 @@ def check_historical_delta(records: list[ReservoirRecord], previous: dict, maxim
 def check_historical_time(records: list[ReservoirRecord], previous: dict) -> CheckResult:
     rollbacks = []
     for record in records:
-        old = previous.get("records", {}).get(record.id_no or record.reservoir_name, {})
+        old = previous.get("records", {}).get(record_key(record), {})
         if old.get("observation_time"):
             try:
                 old_time = datetime.fromisoformat(old["observation_time"])

@@ -9,11 +9,10 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from bijie_hydro.excel_writer import EXPECTED_HEADERS, validate_template, write_workbook
-from bijie_hydro.filtering import ReservoirAllowlist
+from bijie_hydro.filtering import matches_province, normalize_province_names
 from bijie_hydro.http_client import discover_endpoint, parse_api_payload
 from bijie_hydro.models import BatchLog, RawRecord, ReservoirRecord
 from bijie_hydro.normalize import parse_measurement, parse_observation_time
-from bijie_hydro.errors import QualityError
 
 
 TZ = ZoneInfo("Asia/Shanghai")
@@ -46,40 +45,15 @@ class NormalizeTests(unittest.TestCase):
         self.assertEqual(parse_observation_time("12-31 08:00", collected).year, 2025)
 
 
-class AllowlistTests(unittest.TestCase):
-    def test_exact_alias_and_id_matching(self):
-        with tempfile.TemporaryDirectory() as temp:
-            path = Path(temp) / "allowlist.json"
-            path.write_text(
-                json.dumps(
-                    {
-                        "version": "test",
-                        "reservoirs": [
-                            {
-                                "canonical_name": "夹岩水库",
-                                "aliases": ["夹岩"],
-                                "id_nos": ["52001"],
-                                "province": "贵州省",
-                                "city": "毕节市",
-                                "evidence_status": "已核实",
-                                "source_url": "https://official.example/roster",
-                            }
-                        ],
-                    },
-                    ensure_ascii=False,
-                ),
-                encoding="utf-8",
-            )
-            allowlist = ReservoirAllowlist.load(path)
-            province = {"贵州", "贵州省"}
-            city = {"毕节", "毕节市"}
-            self.assertEqual(allowlist.match({"stnm": "夹岩", "addvnm": "贵州省"}, province, city).canonical_name, "夹岩水库")
-            self.assertEqual(allowlist.match({"stnm": "夹岩", "idNo": "52001"}, province, city).canonical_name, "夹岩水库")
-            with self.assertRaises(QualityError):
-                allowlist.match({"stnm": "同名其他库", "idNo": "52001"}, province, city)
-            self.assertIsNone(allowlist.match({"stnm": "夹岩", "addvnm": "云南省"}, province, city))
-            self.assertIsNone(allowlist.match({"stnm": "夹岩水库扩建工程", "addvnm": "贵州省"}, province, city))
-            self.assertIsNone(allowlist.match({"stnm": "夹岩", "addvnm": "云南省毕节村"}, province, city))
+class ProvinceFilterTests(unittest.TestCase):
+    def test_exact_and_detailed_guizhou_areas_match(self):
+        province = normalize_province_names(["贵州", "贵州省"])
+        self.assertTrue(matches_province("贵州", province))
+        self.assertTrue(matches_province("贵州省", province))
+        self.assertTrue(matches_province("贵州省毕节市", province))
+        self.assertFalse(matches_province("云南省", province))
+        self.assertFalse(matches_province("云南省贵州村", province))
+        self.assertFalse(matches_province("", province))
 
 
 class ExcelTests(unittest.TestCase):
