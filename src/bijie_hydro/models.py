@@ -54,7 +54,7 @@ class BatchLog:
     checks: list[CheckResult] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     output_file: str | None = None
-    version: str = "0.3.0"
+    version: str = "0.4.0"
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)

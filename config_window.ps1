@@ -25,7 +25,15 @@ function Read-CollectorConfig {
 }
 
 function Get-ConfigFingerprint {
-    return (Get-FileHash -LiteralPath $configPath -Algorithm SHA256).Hash
+    $stream = [System.IO.File]::Open($configPath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        return ([System.BitConverter]::ToString($sha256.ComputeHash($stream))).Replace('-', '')
+    }
+    finally {
+        $sha256.Dispose()
+        $stream.Dispose()
+    }
 }
 
 function Invoke-ConfigProcess {
@@ -92,15 +100,50 @@ function Validate-Input {
     return $values
 }
 
+function Sync-ArchiveSupportFiles {
+    param(
+        [string]$OldFontCache,
+        [string]$OldStateFile,
+        [string]$NewFontCache,
+        [string]$NewStateFile
+    )
+    if ((Test-Path -LiteralPath $OldFontCache -PathType Container) -and
+        -not $OldFontCache.Equals($NewFontCache, [StringComparison]::OrdinalIgnoreCase)) {
+        [void](New-Item -ItemType Directory -Path $NewFontCache -Force)
+        foreach ($font in Get-ChildItem -LiteralPath $OldFontCache -File -Filter '*.ttf' -ErrorAction Stop) {
+            $target = Join-Path $NewFontCache $font.Name
+            if (-not (Test-Path -LiteralPath $target -PathType Leaf)) {
+                Copy-Item -LiteralPath $font.FullName -Destination $target
+            }
+        }
+    }
+    if ((Test-Path -LiteralPath $OldStateFile -PathType Leaf) -and
+        -not $OldStateFile.Equals($NewStateFile, [StringComparison]::OrdinalIgnoreCase)) {
+        $targetDirectory = Split-Path -Parent $NewStateFile
+        [void](New-Item -ItemType Directory -Path $targetDirectory -Force)
+        $targetExists = Test-Path -LiteralPath $NewStateFile -PathType Leaf
+        if (-not $targetExists -or (Get-Item -LiteralPath $OldStateFile).LastWriteTimeUtc -gt (Get-Item -LiteralPath $NewStateFile).LastWriteTimeUtc) {
+            Copy-Item -LiteralPath $OldStateFile -Destination $NewStateFile -Force
+        }
+    }
+}
+
 function Save-CollectorConfig {
     param([hashtable]$Values)
     Validate-CollectorValues $Values
     if ((Get-ConfigFingerprint) -ne $script:loadedFingerprint) { throw '配置文件已被其他窗口或程序修改，请关闭并重新打开本窗口后再保存。' }
     $settings = Read-CollectorConfig
+    $oldFontCache = Resolve-ConfigPathValue ([string]$settings.paths.font_cache)
+    $oldStateFile = Resolve-ConfigPathValue ([string]$settings.state.file)
+    $newArchiveRoot = Resolve-ConfigPathValue $Values.ArchivePath
+    $newFontCache = Join-Path $newArchiveRoot 'fonts'
+    $newStateFile = Join-Path (Join-Path $newArchiveRoot 'state') 'last_success_guizhou.json'
     $settings.source.max_attempts = $Values.Attempts
     $settings.paths.template = (Resolve-ConfigPathValue $Values.TemplatePath).Replace('\', '/')
     $settings.paths.output_root = (Resolve-ConfigPathValue $Values.OutputPath).Replace('\', '/')
-    $settings.paths.archive_root = (Resolve-ConfigPathValue $Values.ArchivePath).Replace('\', '/')
+    $settings.paths.archive_root = $newArchiveRoot.Replace('\', '/')
+    $settings.paths.font_cache = $newFontCache.Replace('\', '/')
+    $settings.state.file = $newStateFile.Replace('\', '/')
     if ($null -eq $settings.schedule) { $settings | Add-Member -NotePropertyName schedule -NotePropertyValue ([pscustomobject]@{}) -Force }
     $settings.schedule | Add-Member -NotePropertyName daily_time -NotePropertyValue $Values.DailyTime -Force
     $settings.schedule | Add-Member -NotePropertyName daily_count -NotePropertyValue $Values.DailyCount -Force
@@ -113,6 +156,7 @@ function Save-CollectorConfig {
         if (-not (Test-Path -LiteralPath $python -PathType Leaf)) { throw '项目Python环境不存在，请先运行 setup.ps1。' }
         $null = Invoke-ConfigProcess $python @('-m', 'bijie_hydro.cli', '--config', $candidatePath, 'validate-template')
         if ((Get-ConfigFingerprint) -ne $script:loadedFingerprint) { throw '校验期间配置被其他程序修改，本次未保存。请重新打开窗口。' }
+        Sync-ArchiveSupportFiles -OldFontCache $oldFontCache -OldStateFile $oldStateFile -NewFontCache $newFontCache -NewStateFile $newStateFile
         [System.IO.File]::Replace($candidatePath, $configPath, $backupPath)
         $script:loadedFingerprint = Get-ConfigFingerprint
     }
@@ -239,7 +283,7 @@ $templateBrowse.Add_Click({
     }
     finally { $dialog.Dispose() }
 })
-$pathHint = Add-Label '目录须存在，可通过“浏览”新建。修改位置只影响后续文件；历史文件不迁移。字体缓存和去重状态继续使用原配置位置。' 28 444 742 48
+$pathHint = Add-Label '目录须存在，可通过“浏览”新建。后续归档、字体缓存和去重状态均使用新位置；现有缓存及较新状态会复制，历史批次不自动迁移。' 28 444 742 48
 $pathHint.ForeColor = [System.Drawing.Color]::DimGray
 $statusLabel = Add-Label '就绪。更改时间或每天次数后，请使用“保存并更新任务”。' 28 504 742 48
 

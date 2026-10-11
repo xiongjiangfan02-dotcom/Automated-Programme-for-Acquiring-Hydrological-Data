@@ -48,7 +48,7 @@ class CollectionPipeline:
             timeout=int(source.get("timeout_seconds", 30)),
             max_attempts=int(source.get("max_attempts", 3)),
             retry_base_seconds=float(source.get("retry_base_seconds", 2.0)),
-            user_agent=str(source.get("user_agent", "GuizhouHydroCollector/0.3")),
+            user_agent=str(source.get("user_agent", "GuizhouHydroCollector/0.4")),
         )
 
     def run(self, input_json: Path | None = None) -> BatchLog:

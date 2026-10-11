@@ -30,7 +30,8 @@ try {
     # the collector's own failure / access-restriction exit code.
     $ErrorActionPreference = "Continue"
     $collectorOutput = @(& $runner -Config $configPath *>&1)
-    $collectorOutput | Tee-Object -FilePath $logFile -Append | Out-Host
+    $collectorOutput | ForEach-Object { $_.ToString() } | Add-Content -LiteralPath $logFile -Encoding UTF8
+    $collectorOutput | Out-Host
     $collectorExitCode = $LASTEXITCODE
 }
 catch {

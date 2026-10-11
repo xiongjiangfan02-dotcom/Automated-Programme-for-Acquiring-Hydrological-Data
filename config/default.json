@@ -5,13 +5,13 @@
                    "timeout_seconds":  15,
                    "max_attempts":  2,
                    "retry_base_seconds":  2.0,
-                   "user_agent":  "GuizhouHydroCollector/0.3 (authorized data collection)"
+                   "user_agent":  "GuizhouHydroCollector/0.4 (authorized data collection)"
                },
     "paths":  {
-                  "template":  "D:/生态/获取/格式.xlsx",
-                  "output_root":  "D:/生态/获取/成果",
-                  "archive_root":  "D:/生态/获取/归档",
-                  "font_cache":  "D:/生态/获取/归档/fonts"
+                  "template":  "D:/生态/archive/格式.xlsx",
+                  "output_root":  "D:/生态/archive/成果",
+                  "archive_root":  "D:/生态/archive/归档",
+                  "font_cache":  "D:/生态/archive/归档/fonts"
               },
     "font_decoder":  {
                          "reference_fonts":  [
@@ -47,7 +47,7 @@
                     "require_at_least_one_target":  true
                 },
     "state":  {
-                  "file":  "D:/生态/获取/归档/state/last_success_guizhou.json",
+                  "file":  "D:/生态/archive/归档/state/last_success_guizhou.json",
                   "skip_duplicate_snapshot":  true
               },
     "output":  {
